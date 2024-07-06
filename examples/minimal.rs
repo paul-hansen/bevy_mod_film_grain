@@ -15,6 +15,6 @@ fn setup(mut commands: Commands) {
         Camera3dBundle::default(),
         // Add the setting to the camera.
         // This component is also used to determine on which camera to run the post processing effect.
-        FilmGrainSettings::from_strength(0.05),
+        FilmGrainSettings::from_strength(0.2),
     ));
 }

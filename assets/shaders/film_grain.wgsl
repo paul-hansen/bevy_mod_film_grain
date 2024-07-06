@@ -15,7 +15,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     // Chromatic aberration strength
     let noise = (fract(sin(dot(in.uv, vec2(120.9898, 78.233))) * 43758.5453) - 0.5) * 2.0;
     let color = textureSample(screen_texture, texture_sampler, in.uv);
-    let color_grainy = color + (noise * settings.strength);
+    let color_grainy = color + (noise * settings.strength * 0.1);
     // Sample each color channel with an arbitrary shift
     return color_grainy;
 }

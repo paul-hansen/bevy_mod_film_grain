@@ -5,7 +5,7 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, FilmGrainPlugin))
         .add_systems(Startup, setup)
-        .add_systems(Update, (rotate))
+        .add_systems(Update, (rotate, update_settings))
         .run();
 }
 
@@ -71,7 +71,7 @@ fn update_settings(mut settings: Query<&mut FilmGrainSettings>, time: Res<Time>)
         // Remap it to 0..1 because the intensity can't be negative
         strength = strength * 0.5 + 0.5;
         // Scale it to a more reasonable level
-        strength *= 0.018;
+        strength *= 0.18;
 
         // Set the intensity.
         // This will then be extracted to the render world and uploaded to the gpu automatically by the [`UniformComponentPlugin`]

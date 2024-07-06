@@ -24,7 +24,7 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3dBundle::default(),
         // Adding this component enables the effect for this camera only.
-        FilmGrainSettings::new(0.05, 1.0),
+        FilmGrainSettings::from_strength(0.2),
     ));
 }
 ```
