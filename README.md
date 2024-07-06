@@ -7,6 +7,7 @@ WebGPU on the web should work but I haven't tested it yet.
 
 ![image](https://github.com/paul-hansen/bevy_mod_film_grain/assets/7019130/9c232a48-e914-43f8-bb2f-f8da8bbd6025)
 
+Expect changes in the future as there are missing features such as changing the size of the noise and animating the noise over time.
 
 ## Minimal Example
 
