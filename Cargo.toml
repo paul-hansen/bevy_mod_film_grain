@@ -1,0 +1,21 @@
+[package]
+name = "bevy_mod_film_grain"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["webgl2"]
+webgpu = ["bevy/webgpu"]
+webgl2 = ["bevy/webgl2"]
+
+[dependencies]
+bevy = { version = "0.14.0", default-features = false, features = [
+    "bevy_core_pipeline",
+] }
+
+[dev-dependencies]
+bevy = { version = "0.14.0", default-features = true }
+
+[profile.dynlink]
+inherits = "dev"
