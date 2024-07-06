@@ -5,7 +5,7 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, FilmGrainPlugin))
         .add_systems(Startup, setup)
-        .add_systems(Update, (rotate, update_settings))
+        .add_systems(Update, (rotate))
         .run();
 }
 

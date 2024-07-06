@@ -225,7 +225,7 @@ impl FilmGrainSettings {
 impl Default for FilmGrainSettings {
     fn default() -> Self {
         Self {
-            strength: 0.05,
+            strength: 0.02,
             #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
             _webgl2_padding: default(),
         }

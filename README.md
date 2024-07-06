@@ -1,8 +1,11 @@
 # Bevy Film Grain Shader
 
-This is a film grain post process shader implementation for the [Bevy game engine](https://bevyengine.org).
+A film grain post process shader implementation for the [Bevy game engine](https://bevyengine.org).
 It can be used with a single camera or multiple.
-It's tested to work on desktop, wasm with webgl2. WebGpu should work but I haven't tested it yet.
+It's tested to work on desktop and the web with WebGL 2.
+WebGPU on the web should work but I haven't tested it yet.
+
+![image](https://github.com/paul-hansen/bevy_mod_film_grain/assets/7019130/9c232a48-e914-43f8-bb2f-f8da8bbd6025)
 
 
 ## Minimal Example
