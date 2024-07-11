@@ -1,4 +1,6 @@
 #![doc = include_str!("../README.md")]
+#[cfg(not(feature = "hdr"))]
+use bevy::render::texture::BevyDefault;
 use bevy::{
     asset::load_internal_asset,
     core_pipeline::{
@@ -6,7 +8,6 @@ use bevy::{
         fullscreen_vertex_shader::fullscreen_shader_vertex_state,
     },
     ecs::query::QueryItem,
-    pbr::MeshPipelineKey,
     prelude::*,
     render::{
         extract_component::{
@@ -21,7 +22,6 @@ use bevy::{
             *,
         },
         renderer::{RenderContext, RenderDevice},
-        texture::BevyDefault,
         view::ViewTarget,
         RenderApp,
     },
@@ -34,6 +34,7 @@ pub struct FilmGrainPlugin;
 
 impl Plugin for FilmGrainPlugin {
     fn build(&self, app: &mut App) {
+        app.register_type::<FilmGrainSettings>();
         load_internal_asset!(
             app,
             FILM_GRAIN_SHADER_HANDLE,
@@ -208,6 +209,7 @@ impl FromWorld for FilmGrainPipeline {
 
 /// A Bevy Component which will enable the film grain effect when added to an entity with a Camera.
 #[derive(Component, Clone, Copy, ExtractComponent, ShaderType, Reflect, Debug)]
+#[reflect(Component)]
 #[non_exhaustive]
 pub struct FilmGrainSettings {
     #[reflect(@0.0..=1.0)]
