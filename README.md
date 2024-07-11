@@ -30,6 +30,11 @@ fn setup(mut commands: Commands) {
 }
 ```
 
+## HDR
+
+If your camera has hdr enabled, you will need to enable the hdr feature on this crate. Eventually I'll figure out specialization so this isn't needed.
+
+
 ## License
 
 Licensed under either of

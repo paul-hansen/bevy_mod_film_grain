@@ -6,6 +6,7 @@ use bevy::{
         fullscreen_vertex_shader::fullscreen_shader_vertex_state,
     },
     ecs::query::QueryItem,
+    pbr::MeshPipelineKey,
     prelude::*,
     render::{
         extract_component::{
@@ -181,6 +182,9 @@ impl FromWorld for FilmGrainPipeline {
                     // It can be anything as long as it matches here and in the shader.
                     entry_point: "fragment".into(),
                     targets: vec![Some(ColorTargetState {
+                        #[cfg(feature = "hdr")]
+                        format: ViewTarget::TEXTURE_FORMAT_HDR,
+                        #[cfg(not(feature = "hdr"))]
                         format: TextureFormat::bevy_default(),
                         blend: None,
                         write_mask: ColorWrites::ALL,
@@ -212,14 +216,13 @@ pub struct FilmGrainSettings {
     _webgl2_padding: Vec3,
 }
 impl FilmGrainSettings {
-    pub fn from_strength(strength:f32) -> Self {
+    pub fn from_strength(strength: f32) -> Self {
         Self {
             strength,
             #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
             _webgl2_padding: default(),
         }
     }
-
 }
 
 impl Default for FilmGrainSettings {
