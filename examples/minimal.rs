@@ -12,7 +12,7 @@ fn main() {
 /// Set up a simple 3D scene
 fn setup(mut commands: Commands) {
     commands.spawn((
-        Camera3dBundle::default(),
+        Camera3d::default(),
         // Add the setting to the camera.
         // This component is also used to determine on which camera to run the post processing effect.
         FilmGrainSettings::from_strength(0.2),
