@@ -1,6 +1,4 @@
 #![doc = include_str!("../README.md")]
-#[cfg(not(feature = "hdr"))]
-use bevy::render::texture::BevyDefault;
 use bevy::{
     asset::load_internal_asset,
     core_pipeline::{
@@ -197,6 +195,7 @@ impl FromWorld for FilmGrainPipeline {
                 depth_stencil: None,
                 multisample: MultisampleState::default(),
                 push_constant_ranges: vec![],
+                zero_initialize_workgroup_memory: true,
             });
 
         Self {

@@ -17,13 +17,10 @@ fn setup(
 ) {
     // camera
     commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 5.0))
-                .looking_at(Vec3::default(), Vec3::Y),
-            camera: Camera {
-                clear_color: Color::from(TEAL_900).into(),
-                ..default()
-            },
+        Camera3d::default(),
+        Transform::from_translation(Vec3::new(0.0, 0.0, 5.0)).looking_at(Vec3::default(), Vec3::Y),
+        Camera {
+            clear_color: Color::from(TEAL_900).into(),
             ..default()
         },
         // Add the setting to the camera.
@@ -33,20 +30,14 @@ fn setup(
 
     // cube
     commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Cuboid::default()),
-            material: materials.add(Color::srgb(0.8, 0.7, 0.6)),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
-            ..default()
-        },
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
         Rotates,
     ));
     // light
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
-            illuminance: 1_000.,
-            ..default()
-        },
+    commands.spawn(DirectionalLight {
+        illuminance: 1_000.,
         ..default()
     });
 }
@@ -57,15 +48,15 @@ struct Rotates;
 /// Rotates any entity around the x and y axis
 fn rotate(time: Res<Time>, mut query: Query<&mut Transform, With<Rotates>>) {
     for mut transform in &mut query {
-        transform.rotate_x(0.55 * time.delta_seconds());
-        transform.rotate_z(0.15 * time.delta_seconds());
+        transform.rotate_x(0.55 * time.delta_secs());
+        transform.rotate_z(0.15 * time.delta_secs());
     }
 }
 
 // Change the intensity over time to show that the effect is controlled from the main world
 fn update_settings(mut settings: Query<&mut FilmGrainSettings>, time: Res<Time>) {
     for mut setting in &mut settings {
-        let mut strength = time.elapsed_seconds().sin();
+        let mut strength = time.elapsed_secs().sin();
         // Make it loop periodically
         strength = strength.sin();
         // Remap it to 0..1 because the intensity can't be negative
