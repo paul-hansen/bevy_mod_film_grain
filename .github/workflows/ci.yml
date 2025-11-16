@@ -133,3 +133,161 @@ jobs:
         with:
           name: headless-render-screenshot-${{ matrix.os }}
           path: test_images/000.png
+
+  # Upload screenshots and comment on PR
+  upload-screenshots:
+    name: Upload Screenshots
+    runs-on: ubuntu-latest
+    needs: screenshots
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all screenshot artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: screenshots
+
+      - name: Install s3cmd
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y s3cmd
+
+      - name: Configure s3cmd
+        env:
+          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+        run: |
+          cat > ~/.s3cfg << EOF
+          [default]
+          access_key = ${S3_ACCESS_KEY}
+          secret_key = ${S3_SECRET_KEY}
+          host_base = ${S3_ENDPOINT}
+          host_bucket = ${S3_ENDPOINT}
+          use_https = True
+          signature_v2 = False
+          EOF
+
+      - name: Upload screenshots to S3
+        id: upload-to-s3
+        env:
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_BASE_URL: ${{ secrets.S3_BASE_URL }}
+        run: |
+          # Determine prefix based on branch
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            S3_PREFIX="ph-github-actions/screenshots/main"
+            echo "Uploading to main branch prefix"
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            S3_PREFIX="ph-github-actions/screenshots/${SHORT_SHA}"
+            echo "Uploading with commit hash: ${SHORT_SHA}"
+          fi
+
+          echo "Uploading screenshots to s3://${S3_BUCKET}/${S3_PREFIX}/"
+
+          # Store URLs for PR comment
+          URLS=""
+
+          # Upload each screenshot
+          for dir in screenshots/headless-render-screenshot-*; do
+            if [ -d "$dir" ]; then
+              PLATFORM=$(basename "$dir" | sed 's/headless-render-screenshot-//')
+              IMAGE_PATH="$dir/000.png"
+
+              if [ -f "$IMAGE_PATH" ]; then
+                S3_KEY="${S3_PREFIX}/${PLATFORM}.png"
+                echo "Uploading screenshot for $PLATFORM..."
+
+                s3cmd put "$IMAGE_PATH" "s3://${S3_BUCKET}/${S3_KEY}" \
+                  --acl-public \
+                  --mime-type="image/png"
+
+                IMAGE_URL="${S3_BASE_URL}/${S3_KEY}"
+                echo "  Uploaded: $IMAGE_URL"
+
+                # Add to URLs list
+                URLS="${URLS}${PLATFORM}=${IMAGE_URL}\n"
+              fi
+            fi
+          done
+
+          # Save URLs to output
+          echo "urls<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$URLS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const urls = process.env.URLS.trim().split('\n').filter(line => line);
+            const shortSha = process.env.SHORT_SHA;
+            const baseUrl = process.env.S3_BASE_URL;
+
+            let comment = `## Screenshot Comparison (${shortSha})\n\n`;
+            comment += `| Platform | Diff | Screenshot |\n`;
+            comment += `|----------|------|------------|\n`;
+
+            for (const line of urls) {
+              const [platform, url] = line.split('=');
+              const platformName = platform.replace('-latest', '').replace(/^./, c => c.toUpperCase());
+
+              // Construct main branch URL
+              const mainUrl = `${baseUrl}/ph-github-actions/screenshots/main/${platform}.png`;
+
+              // Construct diff URL
+              const diffUrl = `https://cdn.paul.rs/image-diff.html?proxy=none&img1=${encodeURIComponent(mainUrl)}&img2=${encodeURIComponent(url)}`;
+
+              comment += `| ${platformName} | [View Diff](${diffUrl}) | <img src="${url}" alt="${platform}" width="300"> |\n`;
+            }
+
+            // Try to find and update existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Screenshot Comparison')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+        env:
+          URLS: ${{ steps.upload-to-s3.outputs.urls }}
+          SHORT_SHA: ${{ steps.upload-to-s3.outputs.short_sha }}
+          S3_BASE_URL: ${{ secrets.S3_BASE_URL }}
+
+      - name: Add summary
+        run: |
+          echo "## 📸 Screenshots Uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ steps.upload-to-s3.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.upload-to-s3.outputs.urls }}" | while IFS='=' read -r platform url; do
+            if [ -n "$platform" ]; then
+              echo "- **${platform}**: ${url}" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
