@@ -6,17 +6,21 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Test building examples on native targets
-  test-native:
-    name: Test Native (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  # Build examples on native targets
+  build-native:
+    name: Build Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu, windows, macos]
     steps:
       - uses: actions/checkout@v4
 
@@ -38,9 +42,9 @@ jobs:
       - name: Build examples
         run: cargo build --examples --verbose
 
-  # Test building for wasm target
-  test-wasm:
-    name: Test WASM
+  # Build for wasm target
+  build-wasm:
+    name: Build WASM
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -89,13 +93,13 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  # Test headless rendering on multiple platforms
+  # Generate screenshots on multiple platforms
   screenshots:
     name: Generate screenshot (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu, windows, macos]
     steps:
       - uses: actions/checkout@v4
 
@@ -111,7 +115,6 @@ jobs:
           sudo add-apt-repository ppa:kisak/turtle -y
           sudo apt-get update
           sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev xvfb libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
-
 
       - name: Build headless example
         run: cargo build --example ci_screenshots
@@ -131,7 +134,7 @@ jobs:
       - name: Upload screenshot artifact
         uses: actions/upload-artifact@v4
         with:
-          name: headless-render-screenshot-${{ matrix.os }}
+          name: screenshot-${{ matrix.os }}
           path: test_images/000.png
 
   # Upload screenshots and comment on PR
@@ -176,15 +179,9 @@ jobs:
           S3_BUCKET: ${{ secrets.S3_BUCKET }}
           S3_BASE_URL: ${{ secrets.S3_BASE_URL }}
         run: |
-          # Determine prefix based on branch
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            S3_PREFIX="ph-github-actions/screenshots/main"
-            echo "Uploading to main branch prefix"
-          else
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            S3_PREFIX="ph-github-actions/screenshots/${SHORT_SHA}"
-            echo "Uploading with commit hash: ${SHORT_SHA}"
-          fi
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          S3_PREFIX="ph-github-actions/screenshots/${SHORT_SHA}"
+          echo "Uploading with commit hash: ${SHORT_SHA}"
 
           echo "Uploading screenshots to s3://${S3_BUCKET}/${S3_PREFIX}/"
 
@@ -192,9 +189,9 @@ jobs:
           URLS=""
 
           # Upload each screenshot
-          for dir in screenshots/headless-render-screenshot-*; do
+          for dir in screenshots/screenshot-*; do
             if [ -d "$dir" ]; then
-              PLATFORM=$(basename "$dir" | sed 's/headless-render-screenshot-//')
+              PLATFORM=$(basename "$dir" | sed 's/screenshot-//')
               IMAGE_PATH="$dir/000.png"
 
               if [ -f "$IMAGE_PATH" ]; then
@@ -219,7 +216,6 @@ jobs:
           echo -e "$URLS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          SHORT_SHA=$(git rev-parse --short HEAD)
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
@@ -231,16 +227,25 @@ jobs:
             const shortSha = process.env.SHORT_SHA;
             const baseUrl = process.env.S3_BASE_URL;
 
+            // Get main branch's latest commit
+            const { data: mainBranch } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'main'
+            });
+            const mainSha = mainBranch.commit.sha.substring(0, 7);
+
             let comment = `## Screenshot Comparison (${shortSha})\n\n`;
+            comment += `Comparing against main branch (${mainSha})\n\n`;
             comment += `| Platform | Diff | Screenshot |\n`;
             comment += `|----------|------|------------|\n`;
 
             for (const line of urls) {
               const [platform, url] = line.split('=');
-              const platformName = platform.replace('-latest', '').replace(/^./, c => c.toUpperCase());
+              const platformName = platform.replace(/^./, c => c.toUpperCase());
 
               // Construct main branch URL
-              const mainUrl = `${baseUrl}/ph-github-actions/screenshots/main/${platform}.png`;
+              const mainUrl = `${baseUrl}/ph-github-actions/screenshots/${mainSha}/${platform}.png`;
 
               // Construct diff URL
               const diffUrl = `https://cdn.paul.rs/image-diff.html?proxy=none&img1=${encodeURIComponent(mainUrl)}&img2=${encodeURIComponent(url)}`;
@@ -282,7 +287,7 @@ jobs:
 
       - name: Add summary
         run: |
-          echo "## 📸 Screenshots Uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "## Screenshots Uploaded" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Commit: ${{ steps.upload-to-s3.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
