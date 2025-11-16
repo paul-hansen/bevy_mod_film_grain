@@ -209,7 +209,6 @@ impl FromWorld for FilmGrainPipeline {
             layout,
             sampler,
             pipeline_id,
-            // fullscreen_shader: render_world.resource::<FullscreenShader>().clone(),
         }
     }
 }
