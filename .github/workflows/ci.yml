@@ -27,20 +27,21 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - uses: davidlattimore/wild-action@latest
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
           sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
 
       - name: Build library
-        run: cargo build --verbose
+        run: cargo build
 
       - name: Build examples
-        run: cargo build --examples --verbose
+        run: cargo build --examples
 
   # Build for wasm target
   build-wasm:
@@ -57,16 +58,13 @@ jobs:
         with:
           target: wasm32-unknown-unknown
 
+      - uses: davidlattimore/wild-action@latest
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
       - name: Build library for wasm
         run: cargo build --target wasm32-unknown-unknown --no-default-features --features ${{ matrix.feature }}
-        env:
-          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
-
-      - name: Build examples for wasm
-        run: cargo build --target wasm32-unknown-unknown --examples --no-default-features --features ${{ matrix.feature }}
         env:
           RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
 
@@ -82,12 +80,13 @@ jobs:
         with:
           components: clippy
 
+      - uses: davidlattimore/wild-action@latest
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
           sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
 
       - name: Run clippy
@@ -105,6 +104,8 @@ jobs:
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: davidlattimore/wild-action@latest
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -153,9 +154,7 @@ jobs:
           path: screenshots
 
       - name: Install s3cmd
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y s3cmd
+        run: sudo apt-get install -y s3cmd
 
       - name: Configure s3cmd
         env:
@@ -296,3 +295,4 @@ jobs:
               echo "- **${platform}**: ${url}" >> $GITHUB_STEP_SUMMARY
             fi
           done
+
