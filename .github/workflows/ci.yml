@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Test building examples on native targets
+  test-native:
+    name: Test Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
+
+      - name: Build library
+        run: cargo build --verbose
+
+      - name: Build examples
+        run: cargo build --examples --verbose
+
+  # Test building for wasm target
+  test-wasm:
+    name: Test WASM
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        feature: [webgl2, webgpu]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Build library for wasm
+        run: cargo build --target wasm32-unknown-unknown --no-default-features --features ${{ matrix.feature }}
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
+
+      - name: Build examples for wasm
+        run: cargo build --target wasm32-unknown-unknown --examples --no-default-features --features ${{ matrix.feature }}
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
+
+  # Run clippy
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
