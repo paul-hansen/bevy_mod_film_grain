@@ -79,3 +79,47 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  # Test headless rendering on multiple platforms
+  test-headless:
+    name: Test Headless Rendering (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            example: ci_screenshots
+            output: test_images/000.png
+          - os: windows-latest
+            example: ci_screenshots
+            output: test_images/000.png
+          - os: macos-latest
+            example: ci_screenshots
+            output: test_images/000.png
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev xvfb libgl1-mesa-dri libglx-mesa0
+
+      - name: Build headless example
+        run: cargo build --example ${{ matrix.example }}
+
+      - name: Run headless example (Windows/macOS)
+        run: cargo run --example ${{ matrix.example }}
+
+      - name: Check output file exists
+        shell: bash
+        run: test -f ${{ matrix.output }}
+
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-render-screenshot-${{ matrix.os }}
+          path: ${{ matrix.output }}
