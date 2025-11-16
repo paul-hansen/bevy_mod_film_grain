@@ -1,9 +1,9 @@
 #![doc = include_str!("../README.md")]
 use bevy::{
-    asset::load_internal_asset,
+    asset::{load_internal_asset, uuid_handle},
     core_pipeline::{
         core_3d::graph::{Core3d, Node3d},
-        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+        FullscreenShader,
     },
     ecs::query::QueryItem,
     prelude::*,
@@ -13,7 +13,7 @@ use bevy::{
             UniformComponentPlugin,
         },
         render_graph::{
-            NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode, ViewNodeRunner,
+            NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
         },
         render_resource::{
             binding_types::{sampler, texture_2d, uniform_buffer},
@@ -25,7 +25,8 @@ use bevy::{
     },
 };
 
-const FILM_GRAIN_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1864761940373299856);
+const FILM_GRAIN_SHADER_HANDLE: Handle<Shader> =
+    uuid_handle!("1347c9b7-c46a-48e7-b7b8-023a354b7cac");
 
 /// Bevy Plugin to add the film grain shader to your project
 pub struct FilmGrainPlugin;
@@ -121,6 +122,7 @@ impl ViewNode for FilmGrainNode {
                 view: post_process.destination,
                 resolve_target: None,
                 ops: Operations::default(),
+                depth_slice: None,
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
@@ -166,6 +168,11 @@ impl FromWorld for FilmGrainPipeline {
         // We can create the sampler here since it won't change at runtime and doesn't depend on the view
         let sampler = render_device.create_sampler(&SamplerDescriptor::default());
 
+        let vertex = world
+            .resource::<FullscreenShader>()
+            .clone()
+            .to_vertex_state();
+
         let pipeline_id = world
             .resource_mut::<PipelineCache>()
             // This will add the pipeline to the cache and queue it's creation
@@ -173,13 +180,13 @@ impl FromWorld for FilmGrainPipeline {
                 label: Some("film_grain_pipeline".into()),
                 layout: vec![layout.clone()],
                 // This will setup a fullscreen triangle for the vertex state
-                vertex: fullscreen_shader_vertex_state(),
+                vertex,
                 fragment: Some(FragmentState {
                     shader: FILM_GRAIN_SHADER_HANDLE,
                     shader_defs: vec![],
                     // Make sure this matches the entry point of your shader.
                     // It can be anything as long as it matches here and in the shader.
-                    entry_point: "fragment".into(),
+                    entry_point: Some("fragment".into()),
                     targets: vec![Some(ColorTargetState {
                         #[cfg(feature = "hdr")]
                         format: ViewTarget::TEXTURE_FORMAT_HDR,
