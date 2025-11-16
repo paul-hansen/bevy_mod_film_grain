@@ -108,8 +108,10 @@ jobs:
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
+          sudo add-apt-repository ppa:kisak/turtle -y
           sudo apt-get update
-          sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev xvfb libgl1-mesa-dri libglx-mesa0
+          sudo apt-get install --no-install-recommends libxkbcommon-x11-0 xvfb libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
+
 
       - name: Build headless example
         run: cargo build --example ci_screenshots
