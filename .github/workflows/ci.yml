@@ -82,7 +82,7 @@ jobs:
 
   # Test headless rendering on multiple platforms
   test-headless:
-    name: Test Headless Rendering (${{ matrix.os }})
+    name: Generate screenshot (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -111,7 +111,12 @@ jobs:
       - name: Build headless example
         run: cargo build --example ${{ matrix.example }}
 
+      - name: Run headless example (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run cargo run --example ${{ matrix.example }}
+
       - name: Run headless example (Windows/macOS)
+        if: runner.os != 'Linux'
         run: cargo run --example ${{ matrix.example }}
 
       - name: Check output file exists
