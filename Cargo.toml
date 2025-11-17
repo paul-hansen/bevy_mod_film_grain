@@ -16,7 +16,7 @@ bevy = { version = "0.17", default-features = false, features = [
 ] }
 
 [dev-dependencies]
-bevy = { version = "0.17", default-features = true }
+bevy = { version = "0.17", default-features = true, features = ["experimental_bevy_feathers"] }
 crossbeam-channel = "0.5.15"
 
 [profile.dynlink]
