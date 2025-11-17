@@ -1,13 +1,31 @@
-//! A simple scene with a spinning cube. The film grain amount fades in and out over time.
-use bevy::{color::palettes::tailwind::TEAL_900, prelude::*};
+//! A simple scene with a spinning cube with interactive sliders to control film grain settings.
+use bevy::{
+    color::palettes::tailwind::TEAL_900,
+    feathers::{
+        controls::{slider, SliderProps},
+        dark_theme::create_dark_theme,
+        theme::{ThemedText, UiTheme},
+        FeathersPlugins,
+    },
+    prelude::*,
+    ui_widgets::{observe, slider_self_update, SliderPrecision, SliderStep, ValueChange},
+};
 use bevy_mod_film_grain::{FilmGrainPlugin, FilmGrainSettings};
+
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, FilmGrainPlugin))
-        .add_systems(Startup, setup)
-        .add_systems(Update, (rotate, update_settings))
+        .add_plugins((DefaultPlugins, FilmGrainPlugin, FeathersPlugins))
+        .insert_resource(UiTheme(create_dark_theme()))
+        .add_systems(Startup, (setup, setup_ui))
+        .add_systems(Update, rotate)
         .run();
 }
+
+#[derive(Component)]
+struct StrengthSlider;
+
+#[derive(Component)]
+struct MaxFpsSlider;
 
 /// Set up a simple 3D scene
 fn setup(
@@ -24,7 +42,7 @@ fn setup(
             ..default()
         },
         // Add the setting to the camera.
-        // This component is also used to determine on which camera to run the post processing effect.
+        // Add this component on any cameras you want to have film grain.
         FilmGrainSettings::default(),
     ));
 
@@ -53,19 +71,94 @@ fn rotate(time: Res<Time>, mut query: Query<&mut Transform, With<Rotates>>) {
     }
 }
 
-// Change the intensity over time to show that the effect is controlled from the main world
-fn update_settings(mut settings: Query<&mut FilmGrainSettings>, time: Res<Time>) {
-    for mut setting in &mut settings {
-        let mut strength = time.elapsed_secs().sin();
-        // Make it loop periodically
-        strength = strength.sin();
-        // Remap it to 0..1 because the intensity can't be negative
-        strength = strength * 0.5 + 0.5;
-        // Scale it to a more reasonable level
-        strength *= 0.18;
-
-        // Set the intensity.
-        // This will then be extracted to the render world and uploaded to the gpu automatically by the [`UniformComponentPlugin`]
-        setting.strength = strength;
-    }
+/// Set up the UI with sliders for changing film grain settings
+fn setup_ui(mut commands: Commands) {
+    commands.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            padding: UiRect::all(Val::Px(20.0)),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(15.0),
+            ..default()
+        },
+        children![
+            (
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Start,
+                    row_gap: Val::Px(10.0),
+                    ..default()
+                },
+                children![
+                    (Text::new("Strength:"), ThemedText),
+                    (
+                        Node {
+                            width: Val::Px(200.0),
+                            ..default()
+                        },
+                        children![
+                            (
+                                slider(
+                                    SliderProps {
+                                        min: 0.0,
+                                        max: 1.0,
+                                        value: 0.2,
+                                    },
+                                    (StrengthSlider, SliderStep(0.01), SliderPrecision(2)),
+                                ),
+                                observe(slider_self_update),
+                                observe(
+                                    |change: On<ValueChange<f32>>,
+                                     mut settings: Query<&mut FilmGrainSettings>| {
+                                        for mut setting in &mut settings {
+                                            setting.strength = change.value;
+                                        }
+                                    }
+                                )
+                            ),
+                        ]
+                    ),
+                ]
+            ),
+            (
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Start,
+                    row_gap: Val::Px(10.0),
+                    ..default()
+                },
+                children![
+                    (Text::new("Max FPS:"), ThemedText),
+                    (
+                        Node {
+                            width: Val::Px(200.0),
+                            ..default()
+                        },
+                        children![
+                            (
+                                slider(
+                                    SliderProps {
+                                        min: 0.0,
+                                        max: 120.0,
+                                        value: 60.0,
+                                    },
+                                    (MaxFpsSlider, SliderStep(0.01), SliderPrecision(2)),
+                                ),
+                                observe(slider_self_update),
+                                observe(
+                                    |change: On<ValueChange<f32>>,
+                                     mut settings: Query<&mut FilmGrainSettings>| {
+                                        for mut setting in &mut settings {
+                                            setting.max_fps = change.value;
+                                        }
+                                    }
+                                )
+                            ),
+                        ]
+                    ),
+                ]
+            ),
+        ],
+    ));
 }

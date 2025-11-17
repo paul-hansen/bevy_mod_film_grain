@@ -28,6 +28,41 @@ use bevy::{
 const FILM_GRAIN_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("1347c9b7-c46a-48e7-b7b8-023a354b7cac");
 
+/// Internal state component for film grain animation. Automatically added to entities with FilmGrainSettings.
+#[derive(Component, Default, Debug)]
+pub struct FilmGrainState {
+    accumulator: f32,
+    time: f32,
+}
+
+/// System that updates the time value for all film grain effects and GPU uniforms
+fn update_film_grain_time(
+    time: Res<Time>,
+    mut query: Query<(
+        &FilmGrainSettings,
+        &mut FilmGrainState,
+        &mut FilmGrainUniform,
+    )>,
+) {
+    let delta = time.delta_secs();
+    for (settings, mut state, mut uniform) in &mut query {
+        if settings.max_fps > 0.0 {
+            let update_interval = 1.0 / settings.max_fps;
+            state.accumulator += delta;
+
+            if state.accumulator >= update_interval {
+                state.time += state.accumulator;
+                // Reset accumulator, keeping overflow for next frame
+                state.accumulator %= update_interval;
+            }
+        }
+
+        // Update the GPU uniform
+        uniform.strength = settings.strength;
+        uniform.time = state.time;
+    }
+}
+
 /// Bevy Plugin to add the film grain shader to your project
 pub struct FilmGrainPlugin;
 
@@ -41,9 +76,11 @@ impl Plugin for FilmGrainPlugin {
             Shader::from_wgsl
         );
         app.add_plugins((
-            ExtractComponentPlugin::<FilmGrainSettings>::default(),
-            UniformComponentPlugin::<FilmGrainSettings>::default(),
+            ExtractComponentPlugin::<FilmGrainUniform>::default(),
+            UniformComponentPlugin::<FilmGrainUniform>::default(),
         ));
+
+        app.add_systems(Update, update_film_grain_time);
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -79,15 +116,15 @@ struct FilmGrainNode;
 impl ViewNode for FilmGrainNode {
     type ViewQuery = (
         &'static ViewTarget,
-        &'static FilmGrainSettings,
-        &'static DynamicUniformIndex<FilmGrainSettings>,
+        &'static FilmGrainUniform,
+        &'static DynamicUniformIndex<FilmGrainUniform>,
     );
 
     fn run(
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, _film_grain_settings, settings_index): QueryItem<Self::ViewQuery>,
+        (view_target, _film_grain_uniform, uniform_index): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let film_grain_pipeline = world.resource::<FilmGrainPipeline>();
@@ -99,8 +136,8 @@ impl ViewNode for FilmGrainNode {
             return Ok(());
         };
 
-        let settings_uniforms = world.resource::<ComponentUniforms<FilmGrainSettings>>();
-        let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
+        let uniform_buffer = world.resource::<ComponentUniforms<FilmGrainUniform>>();
+        let Some(uniform_binding) = uniform_buffer.uniforms().binding() else {
             return Ok(());
         };
 
@@ -112,7 +149,7 @@ impl ViewNode for FilmGrainNode {
             &BindGroupEntries::sequential((
                 post_process.source,
                 &film_grain_pipeline.sampler,
-                settings_binding.clone(),
+                uniform_binding.clone(),
             )),
         );
 
@@ -130,7 +167,7 @@ impl ViewNode for FilmGrainNode {
         });
 
         render_pass.set_render_pipeline(pipeline);
-        render_pass.set_bind_group(0, &bind_group, &[settings_index.index()]);
+        render_pass.set_bind_group(0, &bind_group, &[uniform_index.index()]);
         render_pass.draw(0..3, 0..1);
 
         Ok(())
@@ -159,8 +196,8 @@ impl FromWorld for FilmGrainPipeline {
                     texture_2d(TextureSampleType::Float { filterable: true }),
                     // The sampler that will be used to sample the screen texture
                     sampler(SamplerBindingType::Filtering),
-                    // The settings uniform that will control the effect
-                    uniform_buffer::<FilmGrainSettings>(true),
+                    // The uniform that will control the effect
+                    uniform_buffer::<FilmGrainUniform>(true),
                 ),
             ),
         );
@@ -214,22 +251,30 @@ impl FromWorld for FilmGrainPipeline {
 }
 
 /// A Bevy Component which will enable the film grain effect when added to an entity with a Camera.
-#[derive(Component, Clone, Copy, ExtractComponent, ShaderType, Reflect, Debug)]
+#[derive(Component, Clone, Copy, Reflect, Debug)]
 #[reflect(Component)]
+#[require(FilmGrainState, FilmGrainUniform)]
 #[non_exhaustive]
 pub struct FilmGrainSettings {
     #[reflect(@0.0..=1.0)]
     pub strength: f32,
-    #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
-    _webgl2_padding: Vec3,
+    /// Maximum FPS for grain animation. Controls how often the grain pattern updates.
+    /// - `0.0` = static grain (no animation)
+    /// - `24.0` = cinematic film grain (updates 24 times per second)
+    /// - f32::MAX = updates every frame
+    #[reflect(@0.0..=f32::MAX)]
+    pub max_fps: f32,
 }
+
 impl FilmGrainSettings {
-    pub fn from_strength(strength: f32) -> Self {
-        Self {
-            strength,
-            #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
-            _webgl2_padding: default(),
-        }
+    pub fn with_strength(mut self, strength: f32) -> Self {
+        self.strength = strength;
+        self
+    }
+
+    pub fn with_max_fps(mut self, max_fps: f32) -> Self {
+        self.max_fps = max_fps;
+        self
     }
 }
 
@@ -237,8 +282,16 @@ impl Default for FilmGrainSettings {
     fn default() -> Self {
         Self {
             strength: 0.2,
-            #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
-            _webgl2_padding: default(),
+            max_fps: f32::MAX,
         }
     }
+}
+
+/// Internal GPU uniform for film grain effect. Extracted from FilmGrainSettings.
+#[derive(Component, Clone, Copy, ExtractComponent, ShaderType, Debug, Default)]
+struct FilmGrainUniform {
+    strength: f32,
+    time: f32,
+    #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
+    _webgl2_padding: Vec2,
 }
