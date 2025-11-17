@@ -138,11 +138,175 @@ jobs:
           name: screenshot-${{ matrix.os }}
           path: test_images/000.png
 
+  # Generate WASM screenshots
+  wasm-screenshots:
+    name: Generate WASM screenshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - uses: davidlattimore/wild-action@latest
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Install wasm-bindgen-cli
+        run: |
+          wget https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.105/wasm-bindgen-0.2.105-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf wasm-bindgen-0.2.105-x86_64-unknown-linux-musl.tar.gz
+          sudo mv wasm-bindgen-0.2.105-x86_64-unknown-linux-musl/wasm-bindgen* /usr/local/bin/
+          wasm-bindgen --version
+
+      - name: Build WASM example
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
+        run: |
+          cargo build --example spinning_cube \
+            --target wasm32-unknown-unknown \
+            --no-default-features \
+            --features webgl2
+
+      - name: Generate bindings
+        run: |
+          mkdir -p wasm-out
+          wasm-bindgen --out-dir wasm-out \
+            --target web \
+            target/wasm32-unknown-unknown/debug/examples/spinning_cube.wasm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install @playwright/test
+          npx playwright install chromium
+          npx playwright install-deps chromium
+
+      - name: Create HTML wrapper
+        run: |
+          cat > index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { margin: 0; overflow: hidden; background: #0a4d4d; }
+              canvas { display: block; width: 100vw; height: 100vh; }
+            </style>
+          </head>
+          <body>
+            <script type="module">
+              import init from './wasm-out/spinning_cube.js';
+              init();
+            </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Create Playwright test
+        run: |
+          cat > screenshot.spec.js << 'EOF'
+          const { test } = require('@playwright/test');
+          const http = require('http');
+          const fs = require('fs');
+          const path = require('path');
+
+          // Simple static file server
+          function startServer() {
+            const server = http.createServer((req, res) => {
+              let filePath = '.' + req.url;
+              if (filePath === './') filePath = './index.html';
+
+              const extname = path.extname(filePath);
+              const contentTypes = {
+                '.html': 'text/html',
+                '.js': 'application/javascript',
+                '.wasm': 'application/wasm',
+              };
+              const contentType = contentTypes[extname] || 'application/octet-stream';
+
+              fs.readFile(filePath, (err, content) => {
+                if (err) {
+                  res.writeHead(404);
+                  res.end('File not found');
+                } else {
+                  res.writeHead(200, { 'Content-Type': contentType });
+                  res.end(content);
+                }
+              });
+            });
+
+            server.listen(8080);
+            return server;
+          }
+
+          test('capture WASM screenshot', async ({ page }) => {
+            const server = startServer();
+
+            try {
+              let bevyDetected = false;
+
+              // Listen for console messages containing "bevy"
+              page.on('console', msg => {
+                if (msg.text().toLowerCase().includes('bevy')) {
+                  console.log('Detected Bevy log:', msg.text());
+                  bevyDetected = true;
+                }
+              });
+
+              await page.goto('http://localhost:8080');
+
+              // Wait for bevy log
+              let maxWait = 10000;
+              const startTime = Date.now();
+              while (!bevyDetected && (Date.now() - startTime) < maxWait) {
+                await page.waitForTimeout(100);
+              }
+
+              // Wait additional half second
+              await page.waitForTimeout(500);
+
+              // Create output directory
+              if (!fs.existsSync('test_images')) {
+                fs.mkdirSync('test_images');
+              }
+
+              // Take screenshot
+              await page.screenshot({ path: 'test_images/000.png' });
+            } finally {
+              server.close();
+            }
+          });
+          EOF
+
+      - name: Run WASM and capture screenshot
+        run: npx playwright test screenshot.spec.js
+
+      - name: Check output file exists
+        run: test -f test_images/000.png
+
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-wasm
+          path: test_images/000.png
+
   # Upload screenshots and comment on PR
   upload-screenshots:
     name: Upload Screenshots
     runs-on: ubuntu-latest
-    needs: screenshots
+    needs: [screenshots, wasm-screenshots]
     permissions:
       pull-requests: write
     steps:
@@ -249,7 +413,7 @@ jobs:
               // Construct diff URL
               const diffUrl = `https://cdn.paul.rs/image-diff.html?proxy=none&img1=${encodeURIComponent(mainUrl)}&img2=${encodeURIComponent(url)}`;
 
-              comment += `| ${platformName} | [View Diff](${diffUrl}) | <img src="${url}" alt="${platform}" width="300"> |\n`;
+              comment += `| ${platformName} | [View Diff](${diffUrl}) | <img src="${url}" alt="${platform}" width="250"> |\n`;
             }
 
             // Try to find and update existing comment
